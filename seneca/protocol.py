@@ -91,4 +91,4 @@ class BitcoinP2P(asyncio.StreamReaderProtocol):
         # Otherwise, ACK the version message, and let's request some more
         # addresses.
         yield from self.send_message(bitcoin.message.msg_verack(self._their_ver))
-        yield from self.send_message(bitcoin.message.msg_addr(self._their_ver))
+        yield from self.send_message(bitcoin.message.msg_getaddr(self._their_ver))
