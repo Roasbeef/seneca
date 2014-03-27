@@ -16,6 +16,11 @@ MY_SUBVERSION = b"/bitcoinlib:0.2/"
 class BitcoinP2P(asyncio.StreamReaderProtocol):
     """."""
 
+    # 90 minute connection timeout.
+    CONN_TIMEOUT = 60 * 90
+    # Ping every 30 minutes.
+    PING_INTERVAL = 60 * 30
+
     def __init__(self, remote_addr, remote_port, net_magic,
                  sub_ver=MY_SUBVERSION):
         super().__init__(asyncio.StreamReader(), self.version_handshake)
@@ -34,6 +39,30 @@ class BitcoinP2P(asyncio.StreamReaderProtocol):
         self._connection_closed = asyncio.Future()
 
         self._reader_task = asyncio.Task(self.start_reader_task())
+
+        # If 90 minutes has passed since the peer has sent a message, then we
+        # consider the connection closed
+        self._conn_timer = None
+        # If 30 minutes has passed since the peer has sent a message, we'll
+        # send a ping to test if the connection is still alive.
+        self._ping_timer = None
+
+    def _reset_conn_timer(self):
+        if self._conn_timer is not None:
+            self._conn_timer.cancel()
+        self._conn_timer = asyncio.get_event_loop.call_later(
+            self.CONN_TIMEOUT, self.connection_lost)
+
+    def _reset_ping_timer(self):
+        @asyncio.coroutine
+        def delayed_ping(self):
+            yield from asyncio.sleep(PING_INTERVAL)
+            yield from self.send_message(bitcoin.message.msg_ping())
+
+        if self._ping_timer is not None:
+            self._ping_timer.cancel()
+
+        self._ping_timer = asyncio.Task(delayed_ping())
 
     def connection_lost(self, exc):
         """."""
@@ -70,7 +99,7 @@ class BitcoinP2P(asyncio.StreamReaderProtocol):
 
         version_message = bitcoin.messages.msg_version()
         version_message.addrTo.ip = self._remote_addr
-        version_message.addrTo.port = self._remote_addr
+        version_message.addrTo.port = self._remote_port
         version_message.addrFrom.ip = "0.0.0.0"
         version_message.addrFrom.port = 0
         version_message.strSubVer = self._sub_ver
